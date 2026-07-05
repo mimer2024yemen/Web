@@ -1,0 +1,14 @@
+node_modules
+.env
+.env.*
+!.env.example
+frontend/dist
+backend/dist
+backend/uploads
+backend/data
+coverage
+backups
+.DS_Store
+npm-debug.log*
+*.sqlite
+*.sqlite-journal

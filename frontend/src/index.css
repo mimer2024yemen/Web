@@ -1,0 +1,25 @@
+:root {
+  color-scheme: dark;
+  --bg-deep: #06080d;
+  --bg-primary: #0a0e17;
+  --bg-surface: #0f1520;
+  --bg-card: #141b2a;
+  --bg-elevated: #1a2236;
+  --bg-hover: #1e2940;
+  --border: #1e2940;
+  --border-light: #2a3654;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  font-family: 'Tajawal', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; background: radial-gradient(circle at top, #11203c 0%, var(--bg-deep) 32%); color: var(--text-primary); }
+a { color: inherit; text-decoration: none; }
+button, input, textarea, select { font: inherit; }
+body { direction: rtl; }
