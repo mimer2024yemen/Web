@@ -1,18 +1,17 @@
 # Project Status
 
 ## Implemented now
-- Vite + React RTL dashboard inspired by the uploaded mockup.
-- Fastify backend with JWT login, refresh token flow, audit logs, settings, user management.
-- Real persistence using SQLite for local development bootstrap.
-- Site management with actual WordPress connection test endpoint.
-- Article CRUD, scheduling metadata, queue processing, and WordPress publish adapter.
-- Media upload endpoint and static serving.
-- Swagger docs, Docker Compose, Nginx proxy, GitHub Actions CI, backup script.
+- Production-oriented Docker images, reverse proxy, health checks, restart policies, and environment-driven runtime configuration.
+- Fastify backend with JWT auth, refresh flow, account lockout, password rotation, audit logs, role/permission matrix, and 2FA setup endpoints.
+- Encrypted storage of site credentials and secrets at rest.
+- Redis-backed publish queue when `REDIS_URL` is configured, with local fallback processing when Redis is absent.
+- Local or S3/MinIO media storage pipeline driven by environment variables.
+- WordPress integration with connection testing, taxonomy synchronization, featured image upload, and article publishing to one or all connected sites.
+- Expanded Arabic admin UI for sites, articles, media, queue, users, webhooks, security, and settings.
+- Automated backend integration tests covering login, user creation, article creation, 2FA setup, and password rotation.
 
-## Still needed for full production completeness
-- Production hosting credentials and real deployment target.
-- Redis/BullMQ runtime wired as live distributed queue (compose exists, runtime integration is partially prepared but not exercised here).
-- MinIO/S3 live object storage pipeline and image processing automation.
-- Full role-permission matrix, 2FA, CSRF hardening, and encrypted secret vault.
-- Advanced editors, templates, categories/tags mapping UI, reports export, notifications, and E2E coverage.
-- Real WordPress media/category/tag synchronization for each site with per-site mapping UI.
+## Remaining external blockers before true live production rollout
+- Real production hosting target credentials and DNS/TLS access for final public deployment.
+- Real WordPress site URLs plus application passwords for each destination site to complete live connection and publish verification.
+- Final production secrets/keys to replace example values in environment configuration.
+- Optional external monitoring/alerting destination if you want centralized observability beyond local logs.

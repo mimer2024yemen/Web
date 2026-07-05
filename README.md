@@ -1,19 +1,21 @@
 # NewsHub Pro
 
-منصة عربية لإدارة الأخبار وربطها بعدة مواقع مع لوحة تحكم RTL وواجهة API فعلية.
+منصة عربية لإدارة الأخبار وربطها بعدة مواقع WordPress مع لوحة تحكم RTL وواجهة API فعلية.
 
 ## ما الذي تم بناؤه
-- **Frontend:** React + Vite SPA عربية مع لوحة تحكم وإدارة أخبار ومواقع ووسائط وطابور ومستخدمين وإعدادات وسجل.
-- **Backend:** Fastify API مع JWT وRefresh Token وSwagger ورفع ملفات وسجلات تدقيق ومزامنة.
-- **Publishing:** عميل WordPress REST API لاختبار الاتصال ونشر المقالات.
-- **Ops:** Docker Compose + Nginx + GitHub Actions + Backup script.
+- **Frontend:** React + Vite SPA عربية مع لوحة تحكم وإدارة أخبار ومواقع ووسائط وطابور ومستخدمين وويب هوكس وأمان وإعدادات وسجل.
+- **Backend:** Fastify API مع JWT وRefresh Token وصلاحيات متقدمة و2FA وسجل تدقيق وتشفير أسرار وإدارة مستخدمين.
+- **Publishing:** عميل WordPress REST API لاختبار الاتصال ومزامنة التصنيفات والوسوم ورفع الصورة البارزة ونشر المقالات.
+- **Ops:** Docker Compose + Nginx + Healthchecks + CI + تخزين محلي أو S3/MinIO + Redis queue.
 
 ## التشغيل المحلي
 ```bash
 npm install
-npm run dev
+npm run build
+npm test
+npm --workspace backend run start
 ```
-- الواجهة: `http://localhost:5173`
+- الواجهة عبر Nginx/Compose أو أثناء التطوير عبر Vite.
 - الـ API: `http://localhost:4000`
 - Swagger: `http://localhost:4000/docs`
 
@@ -21,20 +23,21 @@ npm run dev
 - البريد: `admin@newshub.local`
 - كلمة المرور: `Admin@123456`
 
+## متغيرات البيئة الأساسية
+انسخ `.env.example` وعدّل القيم السرية وبيانات مواقع WordPress والبيئة الإنتاجية.
+
 ## أوامر مهمة
 ```bash
 npm run build
 npm test
-npm run backup
+docker compose up --build -d
 ```
 
 ## هيكل المشروع
 - `frontend/` واجهة المستخدم
 - `backend/` واجهة API وقاعدة البيانات المحلية
-- `docs/` التوثيق
+- `docs/` التوثيق والحالة الحالية
 - `nginx/` إعدادات البروكسي
 
-## ملاحظات
-- تم اعتماد SQLite لتشغيل محلي سريع بدون تعقيد.
-- ملفات `docker-compose.yml` و `nginx/nginx.conf` جاهزة كبداية للبنية الإنتاجية.
-- الحالة الحالية والناقص موضحة في `docs/STATUS.md`.
+## المتبقي للإطلاق الحي
+راجع `docs/STATUS.md` لمعرفة العناصر الخارجية المطلوبة للإطلاق الحي الفعلي مثل بيانات الاستضافة وبيانات مواقع WordPress الفعلية.

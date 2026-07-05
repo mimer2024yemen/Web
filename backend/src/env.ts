@@ -3,16 +3,33 @@ import path from 'node:path';
 
 const rootDir = path.resolve(process.cwd(), '..');
 
+function splitCsv(value: string | undefined, fallback: string[]) {
+  if (!value?.trim()) return fallback;
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
+  isProduction: (process.env.NODE_ENV ?? 'development') === 'production',
   port: Number(process.env.PORT ?? 4000),
+  appUrl: process.env.APP_URL ?? 'http://localhost:8080',
+  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+  allowedOrigins: splitCsv(process.env.ALLOWED_ORIGINS, ['http://localhost:5173', 'http://localhost:8080']),
   jwtSecret: process.env.JWT_SECRET ?? 'change-me-super-secret',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? 'change-me-refresh-secret',
+  encryptionKey: process.env.APP_ENCRYPTION_KEY ?? process.env.JWT_SECRET ?? 'change-me-super-secret',
   adminEmail: process.env.ADMIN_EMAIL ?? 'admin@newshub.local',
   adminPassword: process.env.ADMIN_PASSWORD ?? 'Admin@123456',
   adminName: process.env.ADMIN_NAME ?? 'System Admin',
-  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
   dataDir: path.resolve(rootDir, process.env.DATA_DIR ?? './backend/data'),
   uploadDir: path.resolve(rootDir, process.env.UPLOAD_DIR ?? './backend/uploads'),
   redisUrl: process.env.REDIS_URL ?? '',
+  queueConcurrency: Number(process.env.QUEUE_CONCURRENCY ?? 5),
+  s3Endpoint: process.env.S3_ENDPOINT ?? process.env.MINIO_ENDPOINT ?? '',
+  s3Region: process.env.S3_REGION ?? 'us-east-1',
+  s3AccessKey: process.env.S3_ACCESS_KEY ?? process.env.MINIO_ACCESS_KEY ?? 'minioadmin',
+  s3SecretKey: process.env.S3_SECRET_KEY ?? process.env.MINIO_SECRET_KEY ?? 'minioadmin',
+  s3Bucket: process.env.S3_BUCKET ?? process.env.MINIO_BUCKET ?? 'newshub',
+  s3PublicBaseUrl: process.env.S3_PUBLIC_BASE_URL ?? '',
+  s3Enabled: Boolean((process.env.S3_ENDPOINT ?? process.env.MINIO_ENDPOINT ?? '').trim()),
 };
