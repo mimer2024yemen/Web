@@ -16,6 +16,7 @@ import {
   buildDeterministicAnswer,
   buildSearchQuery,
   extractArticleNumber,
+  extractSearchTerms,
   extractTextFromFile,
   normalizeArabic,
   rankHits,
@@ -107,6 +108,7 @@ function insertMessage(conversationId: string, role: 'user' | 'assistant', conte
 function findRelevantChunks(question: string, documentIds?: string[]) {
   const articleNo = extractArticleNumber(question);
   const ftsQuery = buildSearchQuery(question);
+  const searchTerms = extractSearchTerms(question);
   const hits: SearchHit[] = [];
   const docFilterSql = documentIds?.length ? ` AND dc.document_id IN (${documentIds.map(() => '?').join(',')})` : '';
   const docFilterParams = documentIds?.length ? documentIds : [];
@@ -120,7 +122,7 @@ function findRelevantChunks(question: string, documentIds?: string[]) {
         JOIN document_chunks dc ON dc.id = document_chunks_fts.chunk_id
         JOIN documents d ON d.id = dc.document_id
         WHERE document_chunks_fts MATCH ? ${docFilterSql}
-        LIMIT 12
+        LIMIT 16
       `).all(ftsQuery, ...docFilterParams) as Array<Record<string, unknown>>;
 
       for (const row of ftsRows) {
@@ -141,33 +143,29 @@ function findRelevantChunks(question: string, documentIds?: string[]) {
     }
   }
 
-  if (!hits.length) {
-    const normalizedQuestion = normalizeArabic(question);
-    const terms = normalizedQuestion.split(' ').filter((item) => item.length >= 2).slice(0, 6);
-    if (terms.length) {
-      const whereTerms = terms.map(() => 'dc.normalized_text LIKE ?').join(' OR ');
-      const params = terms.map((term) => `%${term}%`);
-      const rows = db.prepare(`
-        SELECT dc.id, dc.document_id, dc.article_no, dc.article_title, dc.source_label, dc.chunk_text,
-               d.title, d.file_name
-        FROM document_chunks dc
-        JOIN documents d ON d.id = dc.document_id
-        WHERE (${whereTerms}) ${docFilterSql}
-        LIMIT 12
-      `).all(...params, ...docFilterParams) as Array<Record<string, unknown>>;
-      for (const row of rows) {
-        hits.push({
-          id: String(row.id),
-          documentId: String(row.document_id),
-          title: String(row.title),
-          fileName: String(row.file_name),
-          articleNo: row.article_no ? String(row.article_no) : null,
-          articleTitle: row.article_title ? String(row.article_title) : null,
-          sourceLabel: row.source_label ? String(row.source_label) : null,
-          chunkText: String(row.chunk_text),
-          score: 1,
-        });
-      }
+  if (!hits.length && searchTerms.length) {
+    const whereTerms = searchTerms.map(() => 'dc.normalized_text LIKE ?').join(' OR ');
+    const params = searchTerms.map((term) => `%${term}%`);
+    const rows = db.prepare(`
+      SELECT dc.id, dc.document_id, dc.article_no, dc.article_title, dc.source_label, dc.chunk_text,
+             d.title, d.file_name
+      FROM document_chunks dc
+      JOIN documents d ON d.id = dc.document_id
+      WHERE (${whereTerms}) ${docFilterSql}
+      LIMIT 16
+    `).all(...params, ...docFilterParams) as Array<Record<string, unknown>>;
+    for (const row of rows) {
+      hits.push({
+        id: String(row.id),
+        documentId: String(row.document_id),
+        title: String(row.title),
+        fileName: String(row.file_name),
+        articleNo: row.article_no ? String(row.article_no) : null,
+        articleTitle: row.article_title ? String(row.article_title) : null,
+        sourceLabel: row.source_label ? String(row.source_label) : null,
+        chunkText: String(row.chunk_text),
+        score: 1,
+      });
     }
   }
 
@@ -195,6 +193,31 @@ function findRelevantChunks(question: string, documentIds?: string[]) {
     }
   }
 
+  const normalizedQuestion = normalizeArabic(question);
+  if (!hits.length && normalizedQuestion.length >= 4) {
+    const phraseRows = db.prepare(`
+      SELECT dc.id, dc.document_id, dc.article_no, dc.article_title, dc.source_label, dc.chunk_text,
+             d.title, d.file_name
+      FROM document_chunks dc
+      JOIN documents d ON d.id = dc.document_id
+      WHERE dc.normalized_text LIKE ? ${docFilterSql}
+      LIMIT 12
+    `).all(`%${normalizedQuestion}%`, ...docFilterParams) as Array<Record<string, unknown>>;
+    for (const row of phraseRows) {
+      hits.push({
+        id: String(row.id),
+        documentId: String(row.document_id),
+        title: String(row.title),
+        fileName: String(row.file_name),
+        articleNo: row.article_no ? String(row.article_no) : null,
+        articleTitle: row.article_title ? String(row.article_title) : null,
+        sourceLabel: row.source_label ? String(row.source_label) : null,
+        chunkText: String(row.chunk_text),
+        score: 0.8,
+      });
+    }
+  }
+
   const deduped = new Map<string, SearchHit>();
   for (const hit of rankHits(question, hits)) {
     if (!deduped.has(hit.id)) deduped.set(hit.id, hit);
@@ -202,13 +225,33 @@ function findRelevantChunks(question: string, documentIds?: string[]) {
   return [...deduped.values()].slice(0, 8);
 }
 
-async function answerQuestion(question: string, conversationId?: string, documentIds?: string[]) {
-  const resolvedConversationId = ensureConversation(conversationId, question);
+async function buildSearchResponse(question: string, documentIds?: string[]) {
   const hits = findRelevantChunks(question, documentIds);
   const fallback = buildDeterministicAnswer(question, hits);
   const ai = await generateAiLegalAnswer(question, hits).catch(() => null);
-  const answer = ai?.answer?.trim() || fallback.answer;
-  const citations = fallback.citations;
+  return {
+    items: hits.map((hit) => ({
+      documentId: hit.documentId,
+      title: hit.title,
+      fileName: hit.fileName,
+      articleNo: hit.articleNo,
+      articleTitle: hit.articleTitle,
+      sourceLabel: hit.sourceLabel,
+      excerpt: hit.chunkText,
+      score: hit.score,
+    })),
+    answerPreview: ai?.answer?.trim() || fallback.answer,
+    citations: fallback.citations,
+    usedAi: Boolean(ai?.answer),
+    hitsConsidered: hits.length,
+  };
+}
+
+async function answerQuestion(question: string, conversationId?: string, documentIds?: string[]) {
+  const resolvedConversationId = ensureConversation(conversationId, question);
+  const search = await buildSearchResponse(question, documentIds);
+  const answer = search.answerPreview;
+  const citations = search.citations;
 
   insertMessage(resolvedConversationId, 'user', question);
   insertMessage(resolvedConversationId, 'assistant', answer, citations);
@@ -218,8 +261,8 @@ async function answerQuestion(question: string, conversationId?: string, documen
     conversationId: resolvedConversationId,
     answer,
     citations,
-    usedAi: Boolean(ai?.answer),
-    hitsConsidered: hits.length,
+    usedAi: search.usedAi,
+    hitsConsidered: search.hitsConsidered,
   };
 }
 
@@ -256,12 +299,22 @@ export async function buildApp() {
     reply.code(err.statusCode ?? 500).send({ message: err.message || 'Internal Server Error' });
   });
 
-  app.get('/health', async () => ({ ok: true, service: 'ai-legal-search-api', timestamp: nowIso(), aiEnabled: env.aiEnabled, storage: env.useSupabaseStorage && env.supabaseUrl ? 'supabase-or-local-fallback' : 'local' }));
+  app.get('/health', async () => ({
+    ok: true,
+    service: 'ai-legal-search-api',
+    timestamp: nowIso(),
+    aiEnabled: true,
+    externalAiEnabled: env.aiEnabled,
+    assistantMode: env.aiEnabled ? 'hybrid-ai' : 'local-rag',
+    storage: env.useSupabaseStorage && env.supabaseUrl ? 'supabase-or-local-fallback' : 'local',
+  }));
 
   app.get('/api/v1/app/config', async () => ({
     appName: env.appName,
     jurisdiction: env.defaultJurisdiction,
-    aiEnabled: env.aiEnabled,
+    aiEnabled: true,
+    externalAiEnabled: env.aiEnabled,
+    analysisMode: env.aiEnabled ? 'hybrid-ai' : 'local-rag',
     storageMode: env.useSupabaseStorage && env.supabaseUrl ? 'supabase-or-local-fallback' : 'local',
   }));
 
@@ -285,18 +338,16 @@ export async function buildApp() {
   app.post('/api/v1/search', async (request) => {
     const body = (request.body ?? {}) as { query?: string; documentIds?: string[] };
     const query = body.query?.trim() || '';
-    return {
-      items: query ? findRelevantChunks(query, body.documentIds).map((hit) => ({
-        documentId: hit.documentId,
-        title: hit.title,
-        fileName: hit.fileName,
-        articleNo: hit.articleNo,
-        articleTitle: hit.articleTitle,
-        sourceLabel: hit.sourceLabel,
-        excerpt: hit.chunkText,
-        score: hit.score,
-      })) : [],
-    };
+    if (!query) {
+      return {
+        items: [],
+        answerPreview: '',
+        citations: [],
+        usedAi: false,
+        hitsConsidered: 0,
+      };
+    }
+    return buildSearchResponse(query, body.documentIds);
   });
 
   app.post('/api/v1/ask', async (request, reply) => {
