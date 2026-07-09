@@ -15,14 +15,35 @@ export const env = {
   appUrl: process.env.APP_URL ?? 'http://localhost:8080',
   frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
   allowedOrigins: splitCsv(process.env.ALLOWED_ORIGINS, ['http://localhost:5173', 'http://localhost:8080']),
+
+  // Core app
+  appName: process.env.APP_NAME ?? 'AI Legal Search Yemen',
+  defaultJurisdiction: process.env.DEFAULT_JURISDICTION ?? 'اليمن',
+  dataDir: path.resolve(rootDir, process.env.DATA_DIR ?? './backend/data'),
+  uploadDir: path.resolve(rootDir, process.env.UPLOAD_DIR ?? './backend/uploads'),
+
+  // Security / legacy compatibility
   jwtSecret: process.env.JWT_SECRET ?? 'change-me-super-secret',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET ?? 'change-me-refresh-secret',
   encryptionKey: process.env.APP_ENCRYPTION_KEY ?? process.env.JWT_SECRET ?? 'change-me-super-secret',
-  adminEmail: process.env.ADMIN_EMAIL ?? 'admin@newshub.local',
+  adminEmail: process.env.ADMIN_EMAIL ?? 'admin@legal.local',
   adminPassword: process.env.ADMIN_PASSWORD ?? 'Admin@123456',
   adminName: process.env.ADMIN_NAME ?? 'System Admin',
-  dataDir: path.resolve(rootDir, process.env.DATA_DIR ?? './backend/data'),
-  uploadDir: path.resolve(rootDir, process.env.UPLOAD_DIR ?? './backend/uploads'),
+
+  // Optional AI provider (OpenAI-compatible)
+  aiApiUrl: process.env.AI_API_URL ?? process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+  aiApiKey: process.env.AI_API_KEY ?? process.env.OPENAI_API_KEY ?? '',
+  aiModel: process.env.AI_MODEL ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+  aiEnabled: Boolean((process.env.AI_API_KEY ?? process.env.OPENAI_API_KEY ?? '').trim()),
+
+  // Optional Supabase storage
+  supabaseUrl: process.env.SUPABASE_URL ?? '',
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY ?? '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+  supabaseBucket: process.env.SUPABASE_BUCKET ?? 'legal-documents',
+  useSupabaseStorage: String(process.env.USE_SUPABASE_STORAGE ?? 'true').toLowerCase() === 'true',
+
+  // Legacy optional infra fields kept for compatibility
   redisUrl: process.env.REDIS_URL ?? '',
   queueConcurrency: Number(process.env.QUEUE_CONCURRENCY ?? 5),
   s3Endpoint: process.env.S3_ENDPOINT ?? process.env.MINIO_ENDPOINT ?? '',

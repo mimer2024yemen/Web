@@ -21,21 +21,7 @@ async function waitForHealth(baseUrl, timeoutMs = 15000) {
   throw new Error('Server did not become healthy in time');
 }
 
-async function request(baseUrl, method, url, body, token) {
-  const response = await fetch(`${baseUrl}${url}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  return { status: response.status, data };
-}
-
-test('auth, users, articles and 2FA flow', async () => {
+test('upload legal text and answer question with citations', async () => {
   const port = 4110 + Math.floor(Math.random() * 100);
   const baseUrl = `http://127.0.0.1:${port}`;
   const dataDir = path.join(backendDir, `.tmp-data-${port}`);
@@ -51,13 +37,9 @@ test('auth, users, articles and 2FA flow', async () => {
       PORT: String(port),
       DATA_DIR: dataDir,
       UPLOAD_DIR: uploadDir,
+      AI_API_KEY: '',
       REDIS_URL: '',
-      JWT_SECRET: 'test-secret',
-      JWT_REFRESH_SECRET: 'test-refresh-secret',
-      APP_ENCRYPTION_KEY: 'test-encryption-secret',
-      ADMIN_EMAIL: 'admin@test.local',
-      ADMIN_PASSWORD: 'Admin@123456',
-      ADMIN_NAME: 'Admin',
+      USE_SUPABASE_STORAGE: 'false',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -68,29 +50,37 @@ test('auth, users, articles and 2FA flow', async () => {
   try {
     await waitForHealth(baseUrl);
 
-    const login = await request(baseUrl, 'POST', '/api/v1/auth/login', { email: 'admin@test.local', password: 'Admin@123456' });
-    assert.equal(login.status, 200, `login failed: ${JSON.stringify(login.data)} ${stderr}`);
-    const token = login.data.accessToken;
-    assert.ok(token);
+    const form = new FormData();
+    form.append('title', 'قانون العمل اليمني - اختبار');
+    form.append('file', new Blob([`المادة (1) يلتزم صاحب العمل بدفع الأجر في موعده المحدد.\n\nالمادة (2) إذا وقع فصل تعسفي استحق العامل التعويض المناسب والحقوق المالية الأخرى وفقاً للقانون.`], { type: 'text/plain' }), 'labor-law.txt');
 
-    const users = await request(baseUrl, 'POST', '/api/v1/users', { name: 'Editor', email: 'editor@test.local', password: 'StrongPass123!', role: 'editor', status: 'active', permissions: ['articles.publish'] }, token);
-    assert.equal(users.status, 200);
-    assert.equal(users.data.item.email, 'editor@test.local');
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/documents/upload`, {
+      method: 'POST',
+      body: form,
+    });
+    assert.equal(uploadResponse.status, 200, stderr);
+    const uploadData = await uploadResponse.json();
+    assert.equal(uploadData.item.title, 'قانون العمل اليمني - اختبار');
 
-    const article = await request(baseUrl, 'POST', '/api/v1/articles', { title: 'خبر اختبار', content: 'محتوى', targetSiteIds: [], categories: ['سياسة'], tags: ['عاجل'] }, token);
-    assert.equal(article.status, 200);
-    assert.equal(article.data.item.title, 'خبر اختبار');
+    const askResponse = await fetch(`${baseUrl}/api/v1/ask`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: 'ما حقوق العامل عند الفصل التعسفي؟', documentIds: [uploadData.item.id] }),
+    });
+    assert.equal(askResponse.status, 200, stderr);
+    const askData = await askResponse.json();
 
-    const setup = await request(baseUrl, 'POST', '/api/v1/auth/2fa/setup', {}, token);
-    assert.equal(setup.status, 200);
-    assert.ok(setup.data.secret);
-    assert.ok(String(setup.data.otpauthUrl).includes('otpauth://'));
+    assert.ok(String(askData.answer).includes('المادة 2') || String(askData.answer).includes('التعويض'));
+    assert.ok(Array.isArray(askData.citations));
+    assert.ok(askData.citations.length >= 1);
 
-    const passwordChange = await request(baseUrl, 'POST', '/api/v1/auth/change-password', { currentPassword: 'Admin@123456', newPassword: 'Admin@654321' }, token);
-    assert.equal(passwordChange.status, 200);
+    const conversations = await fetch(`${baseUrl}/api/v1/conversations`);
+    const conversationsData = await conversations.json();
+    assert.ok(conversationsData.items.length >= 1);
 
-    const secondLoginOk = await request(baseUrl, 'POST', '/api/v1/auth/login', { email: 'admin@test.local', password: 'Admin@654321' });
-    assert.equal(secondLoginOk.status, 200);
+    const conversation = await fetch(`${baseUrl}/api/v1/conversations/${askData.conversationId}`);
+    const conversationData = await conversation.json();
+    assert.equal(conversationData.messages.length, 2);
   } finally {
     child.kill('SIGTERM');
     await once(child, 'exit').catch(() => undefined);

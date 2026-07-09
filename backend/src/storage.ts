@@ -1,55 +1,75 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from './env.js';
 
-const s3Client = env.s3Enabled ? new S3Client({
-  region: env.s3Region,
-  endpoint: env.s3Endpoint,
-  forcePathStyle: true,
-  credentials: {
-    accessKeyId: env.s3AccessKey,
-    secretAccessKey: env.s3SecretKey,
-  },
-}) : null;
+let supabase: SupabaseClient | null = null;
+if (env.useSupabaseStorage && env.supabaseUrl && env.supabaseServiceRoleKey) {
+  supabase = createClient(env.supabaseUrl, env.supabaseServiceRoleKey, { auth: { persistSession: false } });
+}
+
+let bucketEnsured = false;
+
+async function ensureBucket() {
+  if (!supabase || bucketEnsured) return;
+  const { data: buckets } = await supabase.storage.listBuckets();
+  const exists = buckets?.some((bucket) => bucket.name === env.supabaseBucket);
+  if (!exists) {
+    await supabase.storage.createBucket(env.supabaseBucket, {
+      public: true,
+      fileSizeLimit: '25MB',
+      allowedMimeTypes: [
+        'application/pdf',
+        'text/plain',
+        'text/markdown',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/msword',
+        'application/json',
+      ],
+    });
+  }
+  bucketEnsured = true;
+}
 
 export type StoredObject = {
-  provider: 'local' | 's3';
+  provider: 'local' | 'supabase';
   key: string;
   url: string;
   localPath: string;
 };
 
-function publicObjectUrl(key: string) {
-  if (env.s3PublicBaseUrl) return `${env.s3PublicBaseUrl.replace(/\/$/, '')}/${key}`;
-  if (env.s3Endpoint) return `${env.s3Endpoint.replace(/\/$/, '')}/${env.s3Bucket}/${key}`;
-  return key;
-}
-
 export async function storeBuffer(fileName: string, mimeType: string, buffer: Buffer): Promise<StoredObject> {
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  if (s3Client) {
-    const key = `uploads/${Date.now()}-${safeName}`;
-    await s3Client.send(new PutObjectCommand({
-      Bucket: env.s3Bucket,
-      Key: key,
-      Body: buffer,
-      ContentType: mimeType,
-    }));
-    return {
-      provider: 's3',
-      key,
-      url: publicObjectUrl(key),
-      localPath: '',
-    };
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]+/g, '_');
+  const key = `documents/${Date.now()}-${safeName}`;
+
+  if (supabase) {
+    try {
+      await ensureBucket();
+      const { error } = await supabase.storage.from(env.supabaseBucket).upload(key, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      });
+      if (!error) {
+        const { data } = supabase.storage.from(env.supabaseBucket).getPublicUrl(key);
+        return {
+          provider: 'supabase',
+          key,
+          url: data.publicUrl,
+          localPath: '',
+        };
+      }
+    } catch {
+      // fall back to local storage
+    }
   }
 
-  const filePath = path.join(env.uploadDir, fileName);
-  await fs.promises.writeFile(filePath, buffer);
+  await fs.promises.mkdir(env.uploadDir, { recursive: true });
+  const localPath = path.join(env.uploadDir, key.replace(/^documents\//, ''));
+  await fs.promises.writeFile(localPath, buffer);
   return {
     provider: 'local',
-    key: fileName,
-    url: `/uploads/${fileName}`,
-    localPath: filePath,
+    key,
+    url: `/uploads/${path.basename(localPath)}`,
+    localPath,
   };
 }
